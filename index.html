@@ -23,7 +23,7 @@
   var user = { canEdit: function () { return Promise.resolve(false); }, isOwner: function () { return false; } };
   window.claude = { use: function (n) { return Promise.resolve(n === 'db' ? db : n === 'user' ? user : null); } };
 })();
-</script></head><body><title>Painel Comercial Alô</title>
+</script></head><body><title>Painel de acompanhamento</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Manrope:wght@400;500;600;700&display=swap">
 <style>
@@ -201,8 +201,8 @@ tr.hl-row td{background:var(--sunk);font-weight:700}
 <header class="band">
   <div class="wrap">
     <div class="brand">
-      <h1>Reuniões <span>Comerciais</span></h1>
-      <p>Alô Imóveis Curitiba · acompanhamento da equipe</p>
+      <h1>Painel de <span>acompanhamento</span></h1>
+      <p>Alô Imóveis Curitiba</p>
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-btn-hoje" data-tab="hoje" aria-selected="true">Hoje</button>
