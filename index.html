@@ -188,6 +188,7 @@ tr.hl-row td{background:var(--sunk);font-weight:700}
 .arr{color:var(--band-muted);font-size:18px}
 .metas .meta[style*="span 2"]{min-width:0}
 @media (max-width:820px){.metas .meta[style*="span 2"]{grid-column:auto!important}}
+.acts{margin:6px 0 4px;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:3px;color:var(--ink)}
 .leadnotes{display:flex;flex-direction:column;gap:10px}
 .ln{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,2fr);gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
 .ln:last-child{border-bottom:0}
@@ -1101,7 +1102,7 @@ function renderHoje(){
     $('h0-chart').innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Leads por dia nos últimos 30 dias">' + g + '</svg><p class="note">Fins de semana em cinza claro, hoje em laranja.</p>';
   }
 }
-document.addEventListener('click', ev => { const b = ev.target.closest('[data-psel]'); if (b) { fillPainelSelect(); $('p-corretor').value = b.dataset.psel; showTab('painel'); } });
+document.addEventListener('click', ev => { const b = ev.target.closest('[data-psel]'); if (b) { S.pTouched = true; fillPainelSelect(); $('p-corretor').value = b.dataset.psel; showTab('painel'); } });
 
 function mesAtual(){ return todayISO().slice(0, 7); }
 function metaMes(id){ const m = S.metas && S.metas[id]; return m && m.mes === mesAtual() ? m : null; }
@@ -1151,11 +1152,61 @@ function fillPainelSelect(){
   const sel = $('p-corretor'), cur = sel.value;
   const ids = [...new Set([...activeCorretores().map(c => c.id), ...listCorrCRM().map(x => x[0])])].filter(id => crmOf(id) || S.est[id]);
   ids.sort((a, b) => (corretorById(b) ? 1 : 0) - (corretorById(a) ? 1 : 0) || corrNome(a).localeCompare(corrNome(b), 'pt-BR'));
-  sel.innerHTML = ids.map(id => '<option value="' + esc(id) + '">' + esc(corrNome(id)) + (corretorById(id) ? '' : ' (CRM)') + '</option>').join('');
-  if (ids.includes(cur)) sel.value = cur;
+  const temMetas = Object.keys(S.metas || {}).some(metaMes);
+  sel.innerHTML = (temMetas ? '<option value="_equipe">Equipe · metas somadas</option>' : '') + ids.map(id => '<option value="' + esc(id) + '">' + esc(corrNome(id)) + (corretorById(id) ? '' : ' (CRM)') + '</option>').join('');
+  if (cur && (ids.includes(cur) || (cur === '_equipe' && temMetas))) sel.value = cur;
+  if (temMetas && !S.pTouched) sel.value = '_equipe';
+}
+const ETAPAS = [['leads','recebidos','Leads'],['visitas_agendadas','visita_agendada','Visitas agendadas'],['visitas_realizadas','visita_realizada','Visitas realizadas'],['propostas','proposta','Propostas'],['vendas','vendas','Vendas']];
+const ACOES = {
+  leads: ['Revisar a distribuição: mandar mais leads para quem está mais longe da meta de leads.', 'Cada corretor reativa 10 clientes da carteira por semana (compra futura, perdidos por "contatar futuramente").', 'Pedir indicação a todo cliente que fechou nos últimos 6 meses.'],
+  visitas_agendadas: ['Responder o lead em até 5 minutos no horário comercial e na primeira hora da manhã para os da noite.', 'Cadência mínima: 3 tentativas no 1º dia (ligação + WhatsApp + áudio) e mais 2 nos dias seguintes antes de dar como perdido.', 'Convite fechado na primeira conversa: oferecer duas opções de horário para visitar, em vez de perguntar "quando pode?".'],
+  visitas_realizadas: ['Confirmar toda visita na véspera e 2 horas antes, com localização e foto do imóvel.', 'Visita com dia e hora marcados no CRM; se desmarcar, já reagendar na mesma ligação.', 'Concentrar visitas de lote no sábado, em grupo, nos plantões do empreendimento.'],
+  propostas: ['Qualificar antes da visita: renda, entrada, FGTS e se já tem crédito aprovado.', 'Levar a simulação pronta para a visita e sair com a ficha ou a proposta assinada.', 'Toda visita sem proposta precisa de próximo passo com data no CRM.'],
+  vendas: ['Follow-up de toda proposta em até 48 horas.', 'Acompanhar de perto análise de crédito e documentação com o correspondente.', 'Usar condição da incorporadora (entrada parcelada, fluxo direto) para destravar propostas paradas.']
+};
+function renderEquipe(){
+  const ids = Object.keys(S.metas || {}).filter(metaMes);
+  const now = new Date(), mf = now.getDate() / new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const meta = {}, real = {};
+  ETAPAS.forEach(([mk, rk]) => { meta[mk] = 0; real[mk] = 0; });
+  let vgv = 0; ids.forEach(id => { const m = S.metas[id], d = crmOf(id); vgv += m.vgv || 0; ETAPAS.forEach(([mk, rk]) => { meta[mk] += (mk === 'leads' ? m.leads_necessarios : m[mk]) || 0; real[mk] += d && d.mes ? (d.mes[rk] || 0) : 0; }); });
+  $('p-title').textContent = 'Equipe · metas de ' + nomeMes();
+  $('p-sub').textContent = ids.length + ' corretores com meta · dia ' + now.getDate() + ' de ' + new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() + ' do mês (' + Math.round(mf * 100) + '% do mês)' + (S.crm.info ? ' · Jetimob atualizado em ' + S.crm.info.atualizadoTxt : '') + '.';
+  const card = (k, r, m, sub) => { const p = m ? r / m : 0, cls = p >= 1 ? 'ok' : (p < mf * .8 ? 'bad' : ''), st = p >= 1 ? 'Meta batida' : (p < mf * .8 ? 'Abaixo do ritmo' : 'No ritmo'); return '<div class="meta ' + cls + '"><div class="top"><span class="k">' + k + '</span><span class="pill ' + (cls === 'ok' ? 'ok' : cls === 'bad' ? 'err' : '') + '">' + st + '</span></div><span class="v">' + r + ' <small>/ ' + m + '</small></span><div class="prog"><i style="width:' + Math.min(100, Math.round(p * 100)) + '%"></i><s style="left:' + Math.round(mf * 100) + '%"></s></div><span class="note">' + Math.round(p * 100) + '% da meta · ' + sub + '</span></div>'; };
+  $('p-metas').innerHTML = '<div class="plano" style="grid-column:1/-1"><div><span class="k">Meta somada de ' + nomeMes() + '</span><span class="big">' + brl(vgv) + '</span><span class="note">' + ids.length + ' corretores</span></div><div class="steps">' + ETAPAS.map(([mk, , l], i) => '<div class="step' + (i === 4 ? ' last' : '') + '"><span class="n">' + meta[mk] + '</span><span class="l">' + l + '</span><span class="w">' + Math.ceil(meta[mk] / 4) + ' por semana</span></div>').join('<span class="arr">→</span>') + '</div></div>'
+    + ETAPAS.map(([mk, , l], i) => card(l + ' no mês', real[mk], meta[mk], i === 0 ? 'até hoje deveria estar em ' + Math.round(meta[mk] * mf) : 'deveria estar em ' + Math.round(meta[mk] * mf))).join('');
+  // gargalos: conversão real de cada passagem contra a conversão planejada nas metas
+  const passos = [];
+  for (let i = 1; i < ETAPAS.length; i++) {
+    const [mk, , l] = ETAPAS[i], [pk, , pl] = ETAPAS[i - 1];
+    const plan = meta[pk] ? meta[mk] / meta[pk] : null, feito = real[pk] ? real[mk] / real[pk] : null;
+    passos.push({mk, l, pl, plan, feito, i});
+  }
+  const ritmoLeads = meta.leads ? real.leads / (meta.leads * mf) : 1;
+  const gargalos = [];
+  if (ritmoLeads < .8) gargalos.push(['leads', 'Leads abaixo do necessário', 'A equipe recebeu ' + real.leads + ' leads no mês; no ritmo da meta já deveria ter perto de ' + Math.round(meta.leads * mf) + '.']);
+  passos.forEach(p => { if (p.feito != null && p.plan && p.feito < p.plan * .8 && real[ETAPAS[p.i - 1][0]] >= 3) gargalos.push([p.mk, p.pl + ' → ' + p.l.toLowerCase() + ': ' + Math.round(p.feito * 100) + '% contra ' + Math.round(p.plan * 100) + '% planejado', 'É aqui que o funil está perdendo mais do que a meta aguenta.']); });
+  const pior = mk => ids.map(id => { const m = S.metas[id], d = crmOf(id), r = d && d.mes ? (d.mes[ETAPAS.find(e => e[0] === mk)[1]] || 0) : 0, mm = mk === 'leads' ? m.leads_necessarios : m[mk]; return [id, mm ? r / mm : 1, r, mm]; }).sort((a, b) => a[1] - b[1]).slice(0, 3).filter(x => x[1] < mf * .8);
+  const blocos = gargalos.length ? gargalos : [];
+  if (!blocos.length) {
+    const atras = ETAPAS.map(([mk, , l]) => [mk, l, meta[mk] ? real[mk] / (meta[mk] * mf) : 1]).sort((a, b) => a[2] - b[2])[0];
+    if (atras && atras[2] < 1) blocos.push([atras[0], atras[1] + ' é a etapa mais atrasada', 'Ainda não há volume no mês para medir conversão; olhando só o ritmo, é a que está mais longe do esperado para hoje.']);
+  }
+  $('p-diag').innerHTML = blocos.length ? blocos.map(([mk, t, sub]) => { const pc = pior(mk); return '<div class="al bad"><span class="tag">Gargalo</span><div><b>' + esc(t) + '</b><p>' + esc(sub) + '</p><ul class="acts">' + ACOES[mk].map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>' + (pc.length ? '<p><b style="display:inline">Mais atrasados nessa etapa:</b> ' + pc.map(x => esc(corrNome(x[0])) + ' (' + x[2] + ' de ' + x[3] + ')').join(', ') + '</p>' : '') + '</div></div>'; }).join('') : alertHTML([['good', 'Equipe no ritmo em todas as etapas', 'Nenhuma etapa abaixo do esperado para o dia do mês.']]);
+  $('p-funil').innerHTML = '<tr><th>Corretor</th>' + ETAPAS.map(([, , l]) => '<th class="num">' + l.replace('Visitas ', 'Vis. ') + '</th>').join('') + '</tr>' + ids.sort((a, b) => S.metas[b].vgv - S.metas[a].vgv).map(id => { const m = S.metas[id], d = crmOf(id); return '<tr><td><button type="button" class="linkbtn" data-psel="' + esc(id) + '">' + esc(corrNome(id)) + '</button></td>' + ETAPAS.map(([mk, rk]) => { const mm = mk === 'leads' ? m.leads_necessarios : m[mk], r = d && d.mes ? (d.mes[rk] || 0) : 0, p = mm ? r / mm : 0; return '<td class="num"><b>' + r + '</b>/' + mm + ' <span class="pill ' + (p >= 1 ? 'ok' : p < mf * .8 ? 'err' : '') + '">' + Math.round(p * 100) + '%</span></td>'; }).join('') + '</tr>'; }).join('')
+    + '<tr class="hl-row"><td>Equipe</td>' + ETAPAS.map(([mk]) => '<td class="num">' + real[mk] + '/' + meta[mk] + '</td>').join('') + '</tr>';
+  const t = crmOf('_time');
+  if (t) {
+    const c = t.carteira; $('p-cart').innerHTML = '<div class="insight"><div class="kpi"><span class="k">Abertas</span><span class="v">' + c.abertas + '</span></div><div class="kpi"><span class="k">Paradas 7d+</span><span class="v">' + c.paradas_7d + '</span><span class="d down">' + c.paradas_30d + ' há 30+ dias</span></div></div><div class="bars" style="margin-top:12px">' + hbars(c.por_etapa) + '</div>';
+    $('p-motivos').innerHTML = hbars(t.motivos_30d); $('p-origens').innerHTML = hbars(t.origens_30d);
+  }
+  $('p-chart').innerHTML = '<p class="note">Escolha um corretor para ver a evolução semana a semana.</p>';
+  $('p-leads').innerHTML = '<tr><td class="note">Escolha um corretor para ver os leads dele.</td></tr>';
 }
 function renderPainel(){
   fillPainelSelect();
+  if ($('p-corretor').value === '_equipe') return renderEquipe();
   const id = $('p-corretor').value, d = crmOf(id);
   $('p-title').textContent = id ? 'Painel de ' + corrNome(id) : 'Painel do corretor';
   if (!d) { $('p-sub').textContent = ''; $('p-metas').innerHTML = '<div class="empty" style="grid-column:1/-1">Sem dados do Jetimob para este corretor ainda.</div>'; ['p-diag','p-funil','p-cart','p-chart','p-motivos','p-origens','p-leads'].forEach(x => $(x).innerHTML = ''); return; }
@@ -1195,7 +1246,7 @@ function renderPainel(){
   $('p-origens').innerHTML = hbars(d.origens_30d);
   $('p-leads').innerHTML = (d.leads || []).length ? '<tr><th>Recebido</th><th>Cliente</th><th>Origem</th><th>Empreendimento</th><th>Etapa</th><th>Situação</th></tr>' + d.leads.map(l => '<tr><td>' + br(l.recebido.slice(0, 10)) + ' ' + l.recebido.slice(11) + '</td><td>' + esc(l.cliente) + '</td><td>' + esc(l.origem || '—') + '</td><td>' + esc(l.emp || '—') + '</td><td>' + esc(l.etapa) + '</td><td>' + (l.status === 'aberta' ? (l.parado_dias >= 7 ? '<span class="st perdida">parado há ' + l.parado_dias + ' dias</span>' : '<span class="st">em andamento</span>') : '<span class="st ' + l.status + '">' + (l.status === 'ganha' ? 'venda' : 'perdido' + (l.motivo ? ': ' + esc(l.motivo) : '')) + '</span>') + '</td></tr>').join('') : '<tr><td class="note">Sem leads recentes.</td></tr>';
 }
-$('p-corretor').addEventListener('change', renderPainel);
+$('p-corretor').addEventListener('change', () => { S.pTouched = true; renderPainel(); });
 
 /* reunião: preencher com o Jetimob e leads da semana */
 function semanaAnterior(){ const data = $('f-data').value || todayISO(); const mon = addDays(mondayOf(data), -7); return [mon, addDays(mon, 6)]; }
