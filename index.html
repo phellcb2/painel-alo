@@ -1109,14 +1109,15 @@ function metaMes(id){ const m = S.metas && S.metas[id]; return m && m.mes === me
 function fmtSem(v){ if (v == null) return '—'; if (Number.isInteger(v)) return String(v); if (v < 1) return '1 a cada ' + Math.round(1 / v) + ' semanas'; return Math.floor(v) + ' a ' + Math.ceil(v); }
 const NOMES_MES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 function nomeMes(){ return NOMES_MES[Number(mesAtual().slice(5)) - 1]; }
+function vgvCel(r, m){ const now = new Date(), mf = now.getDate() / new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(), p = m ? r / m : 0; return '<b>' + (r ? brl(r) : 'R$ 0') + '</b> / ' + brl(m) + ' <span class="pill ' + (p >= 1 ? 'ok' : p < mf * .8 ? 'err' : '') + '">' + Math.round(p * 100) + '%</span>'; }
 function renderMetasHoje(){
   const ids = Object.keys(S.metas || {}).filter(id => metaMes(id));
   $('h0-metas-card').hidden = !ids.length; if (!ids.length) return;
   $('h0-metas-title').textContent = 'Metas de ' + nomeMes();
   const now = new Date(), mf = now.getDate() / new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const cel = (r, m) => { const p = m ? r / m : 0, cls = p >= 1 ? 'ok' : (p < mf * .8 ? 'err' : ''); return '<td class="num"><b>' + r + '</b> / ' + m + ' <span class="pill ' + cls + '">' + Math.round(p * 100) + '%</span></td>'; };
-  $('h0-metas').innerHTML = '<tr><th>Corretor</th><th class="num">Meta VGV</th><th class="num">Leads recebidos</th><th class="num">Visitas agendadas</th><th class="num">Visitas realizadas</th><th class="num">Propostas</th><th class="num">Vendas</th></tr>'
-    + ids.map(id => { const m = S.metas[id], d = crmOf(id), x = d ? d.mes : {}; return '<tr><td><button type="button" class="linkbtn" data-psel="' + esc(id) + '">' + esc(corrNome(id)) + '</button></td><td class="num">' + brl(m.vgv) + '</td>' + cel(x.recebidos || 0, m.leads_necessarios) + cel(x.visita_agendada || 0, m.visitas_agendadas) + cel(x.visita_realizada || 0, m.visitas_realizadas) + cel(x.proposta || 0, m.propostas) + cel(x.vendas || 0, m.vendas) + '</tr>'; }).join('')
+  $('h0-metas').innerHTML = '<tr><th>Corretor</th><th class="num">VGV vendido / meta</th><th class="num">Leads recebidos</th><th class="num">Visitas agendadas</th><th class="num">Visitas realizadas</th><th class="num">Propostas</th><th class="num">Vendas</th></tr>'
+    + ids.map(id => { const m = S.metas[id], d = crmOf(id), x = d ? d.mes : {}; return '<tr><td><button type="button" class="linkbtn" data-psel="' + esc(id) + '">' + esc(corrNome(id)) + '</button></td><td class="num">' + vgvCel(x.vgv || 0, m.vgv) + '</td>' + cel(x.recebidos || 0, m.leads_necessarios) + cel(x.visita_agendada || 0, m.visitas_agendadas) + cel(x.visita_realizada || 0, m.visitas_realizadas) + cel(x.proposta || 0, m.propostas) + cel(x.vendas || 0, m.vendas) + '</tr>'; }).join('')
     + '<tr><td colspan="7" class="note" style="white-space:normal">Percentual em verde: meta batida. Em vermelho: abaixo do ritmo esperado para o dia ' + now.getDate() + ' do mês.</td></tr>';
 }
 function metasDe(id){
@@ -1170,11 +1171,11 @@ function renderEquipe(){
   const now = new Date(), mf = now.getDate() / new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const meta = {}, real = {};
   ETAPAS.forEach(([mk, rk]) => { meta[mk] = 0; real[mk] = 0; });
-  let vgv = 0; ids.forEach(id => { const m = S.metas[id], d = crmOf(id); vgv += m.vgv || 0; ETAPAS.forEach(([mk, rk]) => { meta[mk] += (mk === 'leads' ? m.leads_necessarios : m[mk]) || 0; real[mk] += d && d.mes ? (d.mes[rk] || 0) : 0; }); });
+  let vgv = 0, vgvReal = 0; ids.forEach(id => { const m = S.metas[id], d = crmOf(id); vgv += m.vgv || 0; vgvReal += d && d.mes ? (d.mes.vgv || 0) : 0; ETAPAS.forEach(([mk, rk]) => { meta[mk] += (mk === 'leads' ? m.leads_necessarios : m[mk]) || 0; real[mk] += d && d.mes ? (d.mes[rk] || 0) : 0; }); });
   $('p-title').textContent = 'Equipe · metas de ' + nomeMes();
   $('p-sub').textContent = ids.length + ' corretores com meta · dia ' + now.getDate() + ' de ' + new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() + ' do mês (' + Math.round(mf * 100) + '% do mês)' + (S.crm.info ? ' · Jetimob atualizado em ' + S.crm.info.atualizadoTxt : '') + '.';
   const card = (k, r, m, sub) => { const p = m ? r / m : 0, cls = p >= 1 ? 'ok' : (p < mf * .8 ? 'bad' : ''), st = p >= 1 ? 'Meta batida' : (p < mf * .8 ? 'Abaixo do ritmo' : 'No ritmo'); return '<div class="meta ' + cls + '"><div class="top"><span class="k">' + k + '</span><span class="pill ' + (cls === 'ok' ? 'ok' : cls === 'bad' ? 'err' : '') + '">' + st + '</span></div><span class="v">' + r + ' <small>/ ' + m + '</small></span><div class="prog"><i style="width:' + Math.min(100, Math.round(p * 100)) + '%"></i><s style="left:' + Math.round(mf * 100) + '%"></s></div><span class="note">' + Math.round(p * 100) + '% da meta · ' + sub + '</span></div>'; };
-  $('p-metas').innerHTML = '<div class="plano" style="grid-column:1/-1"><div><span class="k">Meta somada de ' + nomeMes() + '</span><span class="big">' + brl(vgv) + '</span><span class="note">' + ids.length + ' corretores</span></div><div class="steps">' + ETAPAS.map(([mk, , l], i) => '<div class="step' + (i === 4 ? ' last' : '') + '"><span class="n">' + meta[mk] + '</span><span class="l">' + l + '</span><span class="w">' + Math.ceil(meta[mk] / 4) + ' por semana</span></div>').join('<span class="arr">→</span>') + '</div></div>'
+  $('p-metas').innerHTML = '<div class="plano" style="grid-column:1/-1"><div><span class="k">Meta somada de ' + nomeMes() + '</span><span class="big">' + brl(vgv) + '</span><span class="note">vendido no mês: <b>' + brl(vgvReal) + '</b> (' + Math.round(vgvReal / vgv * 100) + '%) · ' + ids.length + ' corretores</span></div><div class="steps">' + ETAPAS.map(([mk, , l], i) => '<div class="step' + (i === 4 ? ' last' : '') + '"><span class="n">' + meta[mk] + '</span><span class="l">' + l + '</span><span class="w">' + Math.ceil(meta[mk] / 4) + ' por semana</span></div>').join('<span class="arr">→</span>') + '</div></div>'
     + ETAPAS.map(([mk, , l], i) => card(l + ' no mês', real[mk], meta[mk], i === 0 ? 'até hoje deveria estar em ' + Math.round(meta[mk] * mf) : 'deveria estar em ' + Math.round(meta[mk] * mf))).join('');
   // gargalos: conversão real de cada passagem contra a conversão planejada nas metas
   const passos = [];
@@ -1221,7 +1222,7 @@ function renderPainel(){
   const mm = m && m.mensal;
   if (mm) {
     const sw = mm.semana;
-    $('p-metas').innerHTML = '<div class="plano" style="grid-column:1/-1"><div><span class="k">Meta de ' + nomeMes() + '</span><span class="big">' + brl(mm.vgv) + '</span><span class="note">ticket médio ' + brl(mm.ticket) + ' · base: ' + esc(mm.base) + '</span></div>'
+    $('p-metas').innerHTML = '<div class="plano" style="grid-column:1/-1"><div><span class="k">Meta de ' + nomeMes() + '</span><span class="big">' + brl(mm.vgv) + '</span><span class="note">vendido no mês: <b>' + (d.mes.vgv ? brl(d.mes.vgv) : 'R$ 0') + '</b> (' + Math.round((d.mes.vgv || 0) / mm.vgv * 100) + '%) · ticket médio ' + brl(mm.ticket) + ' · base: ' + esc(mm.base) + '</span></div>'
       + '<div class="steps">' + [['Leads', mm.leads_necessarios, Math.ceil(mm.leads_necessarios / 4)], ['Visitas agendadas', mm.visitas_agendadas, sw.visitas_agendadas], ['Visitas realizadas', mm.visitas_realizadas, sw.visitas_realizadas], ['Propostas', mm.propostas, sw.propostas], ['Vendas', mm.vendas, null]].map((x, i) => '<div class="step' + (i === 4 ? ' last' : '') + '"><span class="n">' + x[1] + '</span><span class="l">' + x[0] + '</span><span class="w">' + (x[2] != null ? fmtSem(x[2]) + ' por semana' : 'no mês') + '</span></div>').join('<span class="arr">→</span>') + '</div></div>'
       + card('Visitas agendadas no mês', d.mes.visita_agendada, mm.visitas_agendadas, mf, d.semana.visita_agendada + ' nesta semana · meta ' + fmtSem(sw.visitas_agendadas) + '/sem')
       + card('Visitas realizadas no mês', d.mes.visita_realizada, mm.visitas_realizadas, mf, d.semana.visita_realizada + ' nesta semana · meta ' + fmtSem(sw.visitas_realizadas) + '/sem')
