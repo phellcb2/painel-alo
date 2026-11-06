@@ -34,7 +34,7 @@ def main(db_dir, sync_dir):
             p = os.path.join(sync_dir, name)
             if os.path.exists(p): return json.load(open(p))
         return None
-    data['sync'] = {k: sync_file(k) for k in ('crm', 'hoje')}
+    data['sync'] = {k: sync_file(k) for k in ('crm', 'hoje', 'analise')}
     data = limpar(data)
     json.dump(data, open(os.path.join(ROOT, 'data.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
 
