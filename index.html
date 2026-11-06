@@ -195,6 +195,8 @@ tr.hl-row td{background:var(--sunk);font-weight:700}
 .ln .who b{display:block;font-size:14px} .ln .who span{font-size:12px;color:var(--muted)}
 @media (max-width:560px){.ln{grid-template-columns:1fr}}
 .st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface);color:var(--muted);white-space:nowrap}
+.g-datas{gap:14px;margin-top:-4px}
+.g-datas input[type=date]{width:auto;padding:7px 10px;font:600 14px var(--body);color-scheme:light dark}
 .a-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
 .a-tbl td.flag{color:var(--bad);font-weight:700}
 .a-tbl td.goodc{color:var(--good);font-weight:700}
@@ -321,8 +323,13 @@ tr.hl-row td{background:var(--sunk);font-weight:700}
         <h2 id="g-title">Funil geral do time</h2>
         <div class="row">
           <label for="g-corretor" class="inline">Corretor <select id="g-corretor"><option value="time">Time todo</option></select></label>
-          <label for="g-periodo" class="inline">Período <select id="g-periodo"><option value="1">Última semana</option><option value="4" selected>Últimas 4 semanas</option><option value="12">Últimas 12 semanas</option><option value="all">Tudo</option></select></label>
+          <label for="g-periodo" class="inline">Período <select id="g-periodo"><option value="hoje">Hoje</option><option value="semana">Esta semana</option><option value="1">Últimos 7 dias</option><option value="mes">Este mês</option><option value="mesant">Mês passado</option><option value="4" selected>Últimas 4 semanas</option><option value="12">Últimas 12 semanas</option><option value="all">Tudo (desde 01/06)</option><option value="custom">Escolher datas</option></select></label>
         </div>
+      </div>
+      <div class="row g-datas">
+        <label for="g-de" class="inline">De <input type="date" id="g-de"></label>
+        <label for="g-ate" class="inline">Até <input type="date" id="g-ate"></label>
+        <span class="note" id="g-dias"></span>
       </div>
       <p class="sub" id="g-sub"></p>
       <div id="g-funil" class="funil"></div>
@@ -330,7 +337,13 @@ tr.hl-row td{background:var(--sunk);font-weight:700}
     </div>
     <div class="card" id="g-rank-card">
       <h2>Por corretor no período</h2>
+      <p class="sub">Toque no nome para ver o funil só dele.</p>
       <div class="tablebox"><table id="g-rank"></table></div>
+    </div>
+    <div class="card" id="g-reu-card">
+      <h2>Pelas reuniões individuais</h2>
+      <p class="sub" id="g-reu-sub"></p>
+      <div id="g-reu" class="funil"></div>
     </div>
     <div class="card" id="h-card">
       <h2 id="h-title">Histórico jun–out · Jetimob + vendas</h2>
@@ -980,50 +993,70 @@ function renderBI(){
 $('bi-corretor').addEventListener('change', renderBI);
 
 /* ---------- visão geral ---------- */
+const isoD = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function gRange(){
+  const per = $('g-periodo').value, hoje = new Date(), t = isoD(hoje);
+  if (per === 'custom') { let de = $('g-de').value || t, ate = $('g-ate').value || t; if (de > ate) [de, ate] = [ate, de]; return [de, ate]; }
+  if (per === 'hoje') return [t, t];
+  if (per === 'semana') return [mondayOf(t), t];
+  if (per === 'mes') return [t.slice(0, 8) + '01', t];
+  if (per === 'mesant') { const a = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1), b = new Date(hoje.getFullYear(), hoje.getMonth(), 0); return [isoD(a), isoD(b)]; }
+  if (per === 'all') return ['2026-06-01', t];
+  const n = per === '1' ? 7 : Number(per) * 7; return [addDays(t, -(n - 1)), t];
+}
+const GF = [['recebidos', 'Leads recebidos'], ['visita_agendada', 'Visita agendada'], ['visita_realizada', 'Visita realizada'], ['proposta', 'Proposta / doc.'], ['vendas', 'Vendas']];
+function somaDiario(id, de, ate){
+  const D = S.diario, r = {recebidos:0, visita_agendada:0, visita_realizada:0, proposta:0, vendas:0, vgv:0, perdidas:0, sem_contato:0};
+  if (!D) return r;
+  const ids = id === 'time' ? Object.keys(D.corretores).filter(c => c !== 'katryni' && c !== 'fantasma') : [id];
+  ids.forEach(c => Object.entries(D.corretores[c] || {}).forEach(([d, v]) => { if (d >= de && d <= ate) D.campos.forEach((k, i) => r[k] += v[i]); }));
+  return r;
+}
 function renderGeral(){
-  const sel = $('g-corretor').value || 'time', per = $('g-periodo').value;
-  const c = corretorById(sel);
-  $('g-title').textContent = sel === 'time' ? 'Funil geral do time' : 'Funil de ' + (c ? c.nome : '');
-  const all = sel === 'time' ? S.reunioes : S.reunioes.filter(r => r.corretorId === sel);
-  const semanas = [...new Set(all.map(r => r.semana))].sort();
-  const keep = per === 'all' ? semanas : semanas.slice(-Number(per));
-  const rows = all.filter(r => keep.includes(r.semana));
-  $('g-rank-card').hidden = sel !== 'time' || !rows.length;
+  const sel = $('g-corretor').value || 'time', c = corretorById(sel);
+  const [de, ate] = gRange();
+  if ($('g-periodo').value !== 'custom') { $('g-de').value = de; $('g-ate').value = ate; }
+  const ndias = Math.round((new Date(ate) - new Date(de)) / 864e5) + 1;
+  $('g-dias').textContent = ndias + (ndias === 1 ? ' dia' : ' dias');
+  $('g-title').textContent = sel === 'time' ? 'Funil geral do time' : 'Funil de ' + (c ? c.nome : (S.diario && S.diario.nomes[sel]) || sel);
   renderHist(sel);
-  if (!rows.length) {
-    $('g-sub').textContent = 'Funil das reuniões individuais registradas.';
-    $('g-funil').innerHTML = '<div class="empty">Ainda não há reuniões registradas' + (sel === 'time' ? '' : ' para este corretor') + '. Registre a primeira em Nova reunião e o funil da semana aparece aqui. Abaixo está o histórico de junho a outubro.</div>';
-    $('g-insight').innerHTML = ''; $('g-rank').innerHTML = '';
-    return;
+  const t = somaDiario(sel, de, ate), D = S.diario;
+  if (!D) { $('g-sub').textContent = 'Os dados do Jetimob aparecem depois da próxima atualização.'; $('g-funil').innerHTML = ''; $('g-insight').innerHTML = ''; }
+  else {
+    const antes = D.etapas_desde && de < D.etapas_desde;
+    $('g-sub').textContent = (de === ate ? brFull(de) : 'De ' + brFull(de) + ' a ' + brFull(ate)) + ' · dados do Jetimob' + (S.crm.info ? ', atualizados em ' + S.crm.info.atualizadoTxt : '') + '.' + (antes ? ' Visitas e propostas por data só existem a partir de ' + brFull(D.etapas_desde) + '; antes disso o funil mostra só leads, vendas e perdas.' : '');
+    let leak = -1, leakP = 101;
+    for (let i = 1; i < GF.length; i++) { const p = pct(t[GF[i][0]], t[GF[i - 1][0]]); if (p !== null && p < leakP && t[GF[i - 1][0]] >= 3) { leakP = p; leak = i; } }
+    const base = Math.max(1, ...GF.map(g => t[g[0]]));
+    let h = '';
+    GF.forEach(([k, l], i) => {
+      if (i > 0) h += '<div class="f-conv' + (i === leak ? ' leak' : '') + '">↓ ' + pctTxt(t[k], t[GF[i - 1][0]]) + ' de ' + GF[i - 1][1].toLowerCase() + ' para ' + l.toLowerCase() + (i === leak ? ' · maior perda' : '') + '</div>';
+      h += '<div class="f-row' + (k === 'vendas' ? ' last' : '') + '"><span class="f-l">' + l + '</span><div class="f-bar"><div class="f-fill" style="width:' + Math.max(2, Math.round(t[k] / base * 100)) + '%"></div></div><span class="f-val">' + t[k] + '</span></div>';
+    });
+    $('g-funil').innerHTML = h;
+    const ins = [
+      ['VGV vendido', t.vgv ? brl(t.vgv) : 'R$ 0', t.vendas + (t.vendas === 1 ? ' venda' : ' vendas') + ' no período', 'hl'],
+      ['Lead → visita', pctTxt(t.visita_agendada, t.recebidos), 'dos leads viraram visita agendada', ''],
+      ['Perdidos', String(t.perdidas), t.sem_contato + ' por falta de contato (' + pctTxt(t.sem_contato, t.perdidas) + ')', 'down'],
+      ['Maior perda', leak > 0 ? GF[leak - 1][1] + ' → ' + GF[leak][1] : '—', leak > 0 ? 'só ' + leakP + '% avançaram nessa etapa' : 'pouco volume para medir', 'down']
+    ];
+    $('g-insight').innerHTML = '<div class="insight">' + ins.map(x => '<div class="kpi ' + x[3] + '"><span class="k">' + x[0] + '</span><span class="v" style="font-size:' + (x[0] === 'Maior perda' ? '22px' : '32px') + '">' + esc(x[1]) + '</span><span class="d ' + (x[3] === 'down' ? 'down' : 'flat') + '">' + esc(x[2]) + '</span></div>').join('') + '</div>';
   }
-  const t = {}; FIELDS.forEach(f => t[f] = rows.reduce((s, r) => s + (r[f] || 0), 0));
-  $('g-sub').textContent = (keep.length === 1 ? 'Semana de ' + brFull(keep[0]) : keep.length + ' semanas, de ' + brFull(keep[0]) + ' a ' + brFull(keep[keep.length-1])) + ' · ' + rows.length + ' reuni' + (rows.length === 1 ? 'ão registrada' : 'ões registradas') + '.';
-  // maior vazamento: etapa com menor conversão
-  let leak = -1, leakP = 101;
-  for (let i = 1; i < STAGES.length; i++) { const p = pct(t[STAGES[i][0]], t[STAGES[i-1][0]]); if (p !== null && p < leakP) { leakP = p; leak = i; } }
-  const base = Math.max(t.leads, 1);
-  let h = '';
-  STAGES.forEach(([k, l], i) => {
-    if (i > 0) {
-      const p = pctTxt(t[k], t[STAGES[i-1][0]]);
-      h += '<div class="f-conv' + (i === leak ? ' leak' : '') + '">↓ ' + p + ' de ' + STAGES[i-1][1].toLowerCase() + ' para ' + l.toLowerCase() + (i === leak ? ' · maior perda' : '') + '</div>';
-    }
-    const w = Math.max(2, Math.round(t[k] / base * 100));
-    h += '<div class="f-row' + (k === 'vendas' ? ' last' : '') + '"><span class="f-l">' + l + '</span><div class="f-bar"><div class="f-fill" style="width:' + w + '%"></div></div><span class="f-val">' + t[k] + '</span></div>';
-  });
-  $('g-funil').innerHTML = h;
-  const ins = [
-    ['Lead → venda', pctTxt(t.vendas, t.leads), 'de cada 100 leads passados'],
-    ['Lead → visita', pctTxt(t.visitas, t.leads), 'dos leads chegaram a visitar'],
-    ['Maior perda', leak > 0 ? STAGES[leak-1][1] + ' → ' + STAGES[leak][1] : '—', leak > 0 ? 'só ' + leakP + '% avançaram nessa etapa' : 'dados insuficientes']
-  ];
-  $('g-insight').innerHTML = '<div class="insight">' + ins.map((x, i) => '<div class="kpi' + (i === 0 ? ' hl' : '') + '"><span class="k">' + x[0] + '</span><span class="v" style="font-size:' + (i === 2 ? '24px' : '34px') + '">' + esc(x[1]) + '</span><span class="d ' + (i === 2 ? 'down' : 'flat') + '">' + esc(x[2]) + '</span></div>').join('') + '</div>';
-  if (sel === 'time') {
-    const by = {};
-    rows.forEach(r => { const b = by[r.corretorId] || (by[r.corretorId] = {nome: (corretorById(r.corretorId) || {}).nome || r.corretorNome || '', leads:0, contatados:0, visitas:0, propostas:0, vendas:0}); FIELDS.forEach(f => b[f] += r[f] || 0); });
-    $('g-rank').innerHTML = '<tr><th>Corretor</th>' + STAGES.map(([, l]) => '<th class="num">' + l + '</th>').join('') + '<th class="num">Lead → visita</th><th class="num">Lead → venda</th></tr>'
-      + Object.values(by).sort((a, b) => (b.vendas - a.vendas) || (b.visitas - a.visitas)).map(b => '<tr><td>' + esc(b.nome) + '</td>' + FIELDS.map(f => '<td class="num">' + b[f] + '</td>').join('') + '<td class="num">' + pctTxt(b.visitas, b.leads) + '</td><td class="num"><b>' + pctTxt(b.vendas, b.leads) + '</b></td></tr>').join('');
+  $('g-rank-card').hidden = sel !== 'time' || !D;
+  if (sel === 'time' && D) {
+    const rows = Object.keys(D.corretores).filter(id => id !== 'katryni' && id !== 'fantasma').map(id => ({id, nome: (corretorById(id) || {}).nome || D.nomes[id] || id, ...somaDiario(id, de, ate)})).filter(r => r.recebidos || r.visita_agendada || r.vendas || r.perdidas);
+    $('g-rank').innerHTML = '<tr><th>Corretor</th>' + GF.map(([, l]) => '<th class="num">' + l.replace('Leads recebidos', 'Leads') + '</th>').join('') + '<th class="num">Lead → visita</th><th class="num">Comparec.</th><th class="num">Perdidos</th><th class="num">Sem contato</th><th class="num">VGV</th></tr>'
+      + rows.sort((a, b) => (b.vgv - a.vgv) || (b.recebidos - a.recebidos)).map(r => '<tr><td><button type="button" class="linkbtn" data-gsel="' + esc(r.id) + '">' + esc(r.nome) + '</button></td>' + GF.map(([k]) => '<td class="num">' + r[k] + '</td>').join('') + '<td class="num">' + pctTxt(r.visita_agendada, r.recebidos) + '</td><td class="num">' + pctTxt(r.visita_realizada, r.visita_agendada) + '</td><td class="num">' + r.perdidas + '</td><td class="num">' + pctTxt(r.sem_contato, r.perdidas) + '</td><td class="num"><b>' + (r.vgv ? brl(r.vgv) : '—') + '</b></td></tr>').join('')
+      + (rows.length ? '<tr class="hl-row"><td>Time</td>' + GF.map(([k]) => '<td class="num">' + t[k] + '</td>').join('') + '<td class="num">' + pctTxt(t.visita_agendada, t.recebidos) + '</td><td class="num">' + pctTxt(t.visita_realizada, t.visita_agendada) + '</td><td class="num">' + t.perdidas + '</td><td class="num">' + pctTxt(t.sem_contato, t.perdidas) + '</td><td class="num">' + (t.vgv ? brl(t.vgv) : '—') + '</td></tr>' : '<tr><td class="note">Nada registrado nessas datas.</td></tr>');
   }
+  // reuniões individuais no mesmo período
+  const all = (sel === 'time' ? S.reunioes : S.reunioes.filter(r => r.corretorId === sel)).filter(r => r.data ? (r.data >= de && r.data <= ate) : (r.semana >= mondayOf(de) && r.semana <= ate));
+  $('g-reu-card').hidden = !S.reunioes.length;
+  if (all.length) {
+    const r = {}; FIELDS.forEach(f => r[f] = all.reduce((s, x) => s + (x[f] || 0), 0)); const b = Math.max(r.leads, 1);
+    $('g-reu-sub').textContent = all.length + ' reuni' + (all.length === 1 ? 'ão registrada' : 'ões registradas') + ' no período, com os números que os corretores trouxeram.';
+    $('g-reu').innerHTML = STAGES.map(([k, l], i) => (i ? '<div class="f-conv">↓ ' + pctTxt(r[k], r[STAGES[i - 1][0]]) + '</div>' : '') + '<div class="f-row' + (k === 'vendas' ? ' last' : '') + '"><span class="f-l">' + l + '</span><div class="f-bar"><div class="f-fill" style="width:' + Math.max(2, Math.round(r[k] / b * 100)) + '%"></div></div><span class="f-val">' + r[k] + '</span></div>').join('');
+  } else { $('g-reu-sub').textContent = 'Nenhuma reunião registrada nessas datas.'; $('g-reu').innerHTML = ''; }
 }
 function renderHist(sel){
   const e = S.est[sel === 'time' ? 'time' : sel];
@@ -1106,6 +1139,8 @@ function renderDist(){
   $('d-origem').innerHTML = og.map(([o, n]) => '<div class="bar"><span>' + esc(o) + '</span><span class="n">' + n.toLocaleString('pt-BR') + '</span><div class="tr"><i style="width:' + Math.round(n / om * 100) + '%"></i></div></div>').join('');
 }
 $('g-periodo').addEventListener('change', renderGeral);
+['g-de', 'g-ate'].forEach(id => $(id).addEventListener('change', () => { $('g-periodo').value = 'custom'; renderGeral(); }));
+document.addEventListener('click', ev => { const b = ev.target.closest('[data-gsel]'); if (!b) return; const s = $('g-corretor'); if (![...s.options].some(o => o.value === b.dataset.gsel)) s.add(new Option(b.textContent, b.dataset.gsel)); s.value = b.dataset.gsel; renderGeral(); });
 
 
 /* ---------- Análise comercial (90 dias, calculada no sync do Jetimob) ---------- */
@@ -1493,6 +1528,7 @@ async function boot(){
   db.collection('estatisticas').onSnapshot(s => { S.est = {}; s.docs.forEach(d => S.est[d.id] = d.data()); renderSugestao(); renderGeral(); renderBI(); }, onErr);
   db.doc('sync/crm').onSnapshot(d => { S.crm = d.exists ? d.data() : {}; renderHoje(); renderPainel(); renderBI(); renderJetForm(); syncSelection(); }, onErr);
   db.collection('metas').onSnapshot(s => { S.metas = {}; s.docs.forEach(d => S.metas[d.id] = d.data()); renderHoje(); renderPainel(); }, onErr);
+  db.doc('sync/diario').onSnapshot(d => { S.diario = d.exists ? d.data() : null; renderGeral(); }, onErr);
   db.doc('sync/analise').onSnapshot(d => { S.ana = d.exists ? d.data() : null; renderAnalise(); }, onErr);
   db.doc('sync/hoje').onSnapshot(d => { S.hoje = d.exists ? d.data() : null; renderHoje(); }, onErr);
 }
