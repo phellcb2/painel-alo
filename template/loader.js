@@ -1,6 +1,10 @@
-/* Versão somente-leitura: os dados vêm de data.json, publicado 2x por dia. */
+/* Versão somente-leitura: os dados vêm do Apps Script (ou de data.json, se ele falhar). */
 (function () {
-  var dados = fetch('data.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return {}; });
+  var FONTE = 'https://script.google.com/macros/s/AKfycbxsgplsRdtMlxWTCpeHRtFLfepOnMfjkqfJanhyvinVssSyp_yg-eU0KXor3gXyc0Q/exec';
+  function local() { return fetch('data.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return {}; }); }
+  /* Dados ao vivo do Apps Script (atualizados às 9h05, 17h05 e no botão "Atualizar agora"); data.json fica de reserva. */
+  var dados = fetch(FONTE + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (d) { return d && d.sync ? d : local(); }).catch(local);
   function snap(id, d) { return { id: id, exists: !!d, data: function () { return d; }, metadata: { fromCache: false, hasPendingWrites: false } }; }
   function erro() { return Promise.reject({ code: 'not_granted', message: 'Somente leitura' }); }
   function docRef(path) {
