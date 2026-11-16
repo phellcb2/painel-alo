@@ -14,13 +14,18 @@ import json, os, sys, glob, re
 ROOT = os.path.dirname(os.path.abspath(__file__))
 REMOVER = {'telefone', 'phone', 'phones', 'email', 'emails', 'para', 'cc', 'ccExtra', 'enviadoPara', 'nomeCRM'}
 
+DATA = re.compile(r'(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)')
+FONE = re.compile(r'\+?\(?\d[\d\s().-]{7,}\d')
+
+def _fone(m):
+    return '[oculto]' if 10 <= len(re.sub(r'\D', '', m.group(0))) <= 13 else m.group(0)
+
 def limpar(x):
-    if isinstance(x, dict):
-        return {k: limpar(v) for k, v in x.items() if k not in REMOVER}
-    if isinstance(x, list):
-        return [limpar(v) for v in x]
-    if isinstance(x, str) and re.search(r'\+?\d[\d\s().-]{9,}\d', x):
-        return re.sub(r'\+?\d[\d\s().-]{9,}\d', '[oculto]', x)
+    if isinstance(x, dict): return {k: limpar(v) for k, v in x.items() if k not in REMOVER}
+    if isinstance(x, list): return [limpar(v) for v in x]
+    if isinstance(x, str) and '@' in x: x = re.sub(r'[\w.+-]+@[\w-]+\.[\w.]+', '[oculto]', x)
+    if isinstance(x, str) and FONE.search(x):  # datas ficam, telefones somem
+        return ''.join(p if i % 2 else FONE.sub(_fone, p) for i, p in enumerate(DATA.split(x)))
     return x
 
 def main(db_dir, sync_dir):
